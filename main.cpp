@@ -30,7 +30,7 @@ Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin)
 int main(int argc, char** argv)
 {
     qputenv("QT_LOGGING_TO_CONSOLE", "1");
-    QLoggingCategory::setFilterRules("*.debug=true");
+    //QLoggingCategory::setFilterRules("*.debug=true");
 
     QApplication::setAttribute( Qt::AA_EnableHighDpiScaling );
     QApplication::setAttribute( Qt::AA_UseOpenGLES ); //force usage of ANGL backend

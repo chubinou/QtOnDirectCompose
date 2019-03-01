@@ -15,13 +15,26 @@ Rectangle {
     Rectangle {
         anchors.left: parent.left
         anchors.leftMargin: 20
-        width: 100; height: 100; color: "orange"
+        width: 100; height: 100;
+        color: mousearea.containsMouse ? "blue" : "orange"
+
+        MouseArea {
+            id: mousearea
+            anchors.fill: parent
+            hoverEnabled: true
+
+        }
 
         PropertyAnimation on y {
             loops: Animation.Infinite
             from: 0
-            to: 300
-            duration: 2000
+            to: 600
+            duration: 3000
         }
+    }
+
+    Text{
+        anchors.centerIn: parent
+        text: "dans le bon sens"
     }
 }
