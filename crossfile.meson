@@ -1,0 +1,18 @@
+[binaries]
+c = 'x86_64-w64-mingw32-gcc'
+cpp = 'x86_64-w64-mingw32-g++'
+ar = 'x86_64-w64-mingw32-ar'
+strip = 'x86_64-w64-mingw32-strip'
+pkgconfig = '/dcomp/pkg-config'
+windres = 'x86_64-w64-mingw32-windres'
+[properties]
+needs_exe_wrapper = true
+cpp_args = [ '-I/vlc/contrib/x86_64-w64-llvmwin/include' ]
+cpp_link_args = [ '-L/vlc/contrib/x86_64-w64-llvmwin/lib' ]
+c_args = [ '-I/vlc/contrib/x86_64-w64-llvmwin/include' ]
+c_link_args = [ '-L/vlc/contrib/x86_64-w64-llvmwin/lib' ]
+[host_machine]
+system = 'windows'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
