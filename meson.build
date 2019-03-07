@@ -22,20 +22,3 @@ executable(
     qt5dep
   ]
 )
-
-
-#executable(
-#  'simpleegl',
-#  [ 'simpleegl.cpp' ],
-#  override_options : [
-#    'b_lundef=false',
-#    'b_asneeded=false'
-#  ],
-#  include_directories: include_directories('/vlc/contrib/x86_64-w64-llvmwin/include/QtANGLE/'),
-#  c_args: ['-gcodeview', '-DANGLE_STATIC_LINK'],
-#  cpp_args: ['-gcodeview', '-DANGLE_STATIC_LINK'],
-#  link_args: ['-Wl,-pdb,module.pdb', '-static', '-ldcomp', '-ld3d11', '-llibEGL', '-llibGLESv2'],
-#  dependencies : [
-#    qt5dep
-#  ]
-#)
