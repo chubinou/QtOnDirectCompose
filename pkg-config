@@ -1,6 +1,0 @@
-#! /bin/sh
-
-
-export PKG_CONFIG_PATH=/vlc/contrib/x86_64-w64-llvmwin/lib/pkgconfig/
-exec pkg-config "$@"
-
