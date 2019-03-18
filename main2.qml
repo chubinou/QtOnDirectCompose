@@ -5,12 +5,16 @@ Rectangle {
     width: 640
     height: 480
     //title: qsTr("Hello World")
-    //opacity: 0.5
     gradient: Gradient {
         GradientStop { position: 0.0; color: "#00FFFF00";}
         GradientStop { position: 1.0; color: "#FFFF00FF" }
     }
 
+
+    border {
+        width: 4
+        color: "green"
+    }
 
     Rectangle {
         anchors.left: parent.left
@@ -35,6 +39,6 @@ Rectangle {
 
     Text{
         anchors.centerIn: parent
-        text: "dans le bon sens"
+        text: "using the right orientation"
     }
 }

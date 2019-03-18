@@ -15,6 +15,7 @@
 #include <QQuickView>
 #include <QQuickItem>
 #include <QSGTransformNode>
+#include <QSGRectangleNode>
 #include <QQuickRenderControl>
 #include <QOpenGLContext>
 #include <QOffscreenSurface>
@@ -54,38 +55,43 @@ private:
     QPoint offset;
 };
 
+class QMLTransformNode : public QQuickItem {
+    Q_OBJECT
+public:
+    QMLTransformNode(QQuickItem* parent = nullptr)
+        : QQuickItem(parent)
+    {
+        setFlag(QQuickItem::ItemHasContents);
+        setTransformOrigin(QQuickItem::Center);
+    }
 
+    //Meh, it's working but it doesn't look right
+    QSGNode * updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData * nodeData)
+    {
+        qWarning() << "updatePaintNode " << m_offset.x() << " " << m_offset.y();
+        QMatrix4x4 matrix(
+             1, 0, 0, m_offset.x(),
+             0, -1, 0, height() + m_offset.y(),
+             0, 0, 1, 0,
+             0, 0, 0, 1
+            );
+        nodeData ->transformNode->setMatrix(matrix);
+        nodeData ->transformNode->markDirty(QSGNode::DirtyMatrix);
 
-//class QMLTransformNode : public QQuickItem {
-//    Q_OBJECT
-//public:
-//    QMLTransformNode(QQuickItem* parent = nullptr)
-//        : QQuickItem(parent)
-//    {}
-//
-//    QSGNode * updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData * nodeData)
-//    {
-//        qWarning() << "updatePaintNode";
-//        QSGTransformNode* node;
-//        if (oldNode == nullptr) {
-//            node = new QSGTransformNode();
-//            QMatrix4x4 matrix(
-//               -1,0,0,0,
-//                0,-1,0,0,
-//                0,0,1,0,
-//                0,0,0,1
-//                );
-//            node->setMatrix(matrix);
-//            node->markDirty(QSGNode::DirtyGeometry);
-//            node->markDirty(QSGNode::DirtyMatrix);
-//
-//        } else {
-//            oldNode->markDirty(QSGNode::DirtyMatrix);
-//            return oldNode;
-//        }
-//        return node;
-//    }
-//};
+        return oldNode;
+    }
+
+    void setOffset(int x, int y)
+    {
+        if (m_offset.x() == x && m_offset.y() == y)
+            return;
+        m_offset.setX(x);
+        m_offset.setY(y);
+        update();
+    }
+
+    QPoint m_offset;
+};
 
 
 class DirectCompositor : public QObject {
@@ -114,10 +120,9 @@ private slots:
 
     bool eventFilter(QObject *object, QEvent *event);
 
-
 private:
 
-    QWindow* m_rootWindow;
+    QWindow* m_rootWindow = nullptr;
     HWND m_hwnd;
     Microsoft::WRL::ComPtr<ID3D11Device> m_D3D11Device;
 
@@ -130,6 +135,8 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionVirtualSurface> uiSurface;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> uiDrawTexture;
 
+    QSize m_surfaceSize;
+
     QTimer m_updateTimer;
 
     QOpenGLContext* m_context = nullptr;
@@ -138,10 +145,11 @@ private:
     EGLContext m_eglCtx  = 0;
     EGLConfig m_eglConfig = 0;
 
-    EGLSurface m_UIsurface;
+    EGLSurface m_UIsurface = 0;
 
     //dummy offscreen surface
-    QOffscreenSurface* m_uiOffscreen = nullptr;
+    QOffscreenSurface* m_uiOffscreenSurface = nullptr;
+    QWindow* m_uiOffscreenWindow = nullptr;
     RenderControl* m_uiRenderControl = nullptr;
 
     QQuickWindow* m_uiWindow = nullptr;
@@ -150,6 +158,7 @@ private:
     QQuickItem* m_rootItem = nullptr;
     bool m_quickInitialized = false;
 
+    QMLTransformNode* m_transformNode = nullptr;
 };
 
 #endif /* COMPOSITOR_HPP */

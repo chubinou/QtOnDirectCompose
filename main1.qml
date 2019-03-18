@@ -4,6 +4,10 @@ Rectangle {
     visible: true
     width: 640
     height: 480
+    border {
+        width: 4
+        color: "green"
+    }
     //title: qsTr("Hello World")
     //opacity: 0.5
     //color: "blue"

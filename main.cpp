@@ -49,18 +49,8 @@ int main(int argc, char** argv)
 
     DirectCompositor compositor{ (HWND)qw.winId() };
 
-    //QQuickWidget qml1;
-    //qml1.setWindowFlag(Qt::ToolTip);
-    //qml1.setSource(QUrl(QStringLiteral("qrc:/main1.qml")));
-    //qml1.setResizeMode(QQuickWidget::SizeRootObjectToView);
-    //qml1.setClearColor(Qt::transparent);
-    //qml1.setAttribute(Qt::WA_TranslucentBackground);
-    //qml1.winId();
-    //qml1.show();
-
     compositor.initDComposition();
     compositor.createDcompositionAngleSurface(qw.windowHandle(), 800, 600);
 
     return app.exec();
 }
-

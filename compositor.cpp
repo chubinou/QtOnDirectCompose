@@ -2,6 +2,7 @@
 #include <comdef.h>
 #include <QQuickView>
 #include <QOpenGLFunctions>
+#include <QOpenGLFramebufferObject>
 #include <QOpenGLExtraFunctions>
 #include <QtQml/QQmlError>
 #include <QtQml/QQmlComponent>
@@ -20,23 +21,13 @@ struct ComException
         result(value)
     {}
 };
-void HR(HRESULT const result, const char* msg = "")
+
+static void HR(HRESULT const result, const char* msg = "")
 {
-#define DCOMPOSITION_PRINT(CODE) case CODE: qWarning() << msg << "Failed (" << #CODE << ")"; break;
     if (S_OK != result)
     {
         _com_error error(result);
         LPCTSTR errorText = error.ErrorMessage();
-
-        //switch (result) {
-        //DCOMPOSITION_PRINT(DCOMPOSITION_ERROR_ACCESS_DENIED)
-        //DCOMPOSITION_PRINT(DCOMPOSITION_ERROR_SURFACE_BEING_RENDERED)
-        //DCOMPOSITION_PRINT(DCOMPOSITION_ERROR_SURFACE_NOT_BEING_RENDERED)
-        //DCOMPOSITION_PRINT(DCOMPOSITION_ERROR_WINDOW_ALREADY_COMPOSED)
-        //default:
-        //    qWarning() << msg << "Failed (Unknown)";
-        //    break;
-        //}
         qWarning() << msg << "Failed (" << errorText << ")";
         throw ComException(result);
     }
@@ -44,7 +35,6 @@ void HR(HRESULT const result, const char* msg = "")
     {
         qWarning() << msg << "OK";
     }
-#undef DCOMPOSITION_PRINT
 }
 
 void check(bool result, const char* msg = "")
@@ -57,7 +47,7 @@ void check(bool result, const char* msg = "")
 }
 
 
-void eglCheck( EGLBoolean result, const char* msg = "" )
+static void eglCheck( EGLBoolean result, const char* msg = "" )
 {
 #define EGL_PRINT_CODE(val) case val: qWarning() << msg << "Failed (" << #val << ")"; break;
     if (result) {
@@ -149,26 +139,17 @@ void DirectCompositor::createDcompositionAngleSurface(QWindow* window, int width
     HR(m_DCompDevice->CreateVisual(&rootVisual), "create root visual");
     HR(m_DCompTarget->SetRoot(rootVisual.Get()), "set root visual");
 
-    m_uiOffscreen = new QOffscreenSurface();
-    m_uiOffscreen->setFormat(format);;
-    m_uiOffscreen->create();
 
-    EGLint configureAttributes[] = {
-        EGL_RED_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_ALPHA_SIZE, 8,
-        EGL_DEPTH_SIZE, 8,
-        EGL_STENCIL_SIZE, 8,
-        EGL_BIND_TO_TEXTURE_RGBA, EGL_TRUE,
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-        EGL_NONE
-    };
-    EGLConfig eglConfig;
-    EGLint config_found;
-    eglCheck(eglChooseConfig( m_eglDisplay, configureAttributes, &eglConfig, 1, &config_found), "egl choose config");
+    m_uiOffscreenSurface = new QOffscreenSurface();
+    m_uiOffscreenSurface->setFormat(format);;
+    m_uiOffscreenSurface->create();
 
-    qWarning() << "found " << config_found << "configs";
+
+    m_uiOffscreenWindow = new QWindow(window->screen());
+    m_uiOffscreenWindow->setFormat(format);;
+    m_uiOffscreenWindow->setSurfaceType(QWindow::OpenGLSurface);
+    m_uiOffscreenWindow->setGeometry(300, 200, window->width(), window->height());
+    m_uiOffscreenWindow->create();
 
     //create target surface
     qreal dpr = m_rootWindow->devicePixelRatio();
@@ -180,27 +161,26 @@ void DirectCompositor::createDcompositionAngleSurface(QWindow* window, int width
     //put UI in interface
     HR(m_DCompDevice->CreateVisual(&uiVisual), "create ui visual");
     HR(uiVisual->SetContent(uiSurface.Get()), "set ui content");
+    //setting transform here doesn't seems to work
     //const D2D1_MATRIX_3X2_F matrix =  {
     //    1.f, 0.f,
     //    0.f, 1.f,
-    //    0.f, 0.f
+    //    0.0f, 0.f
     //};
     //HR(m_DCompDevice->CreateMatrixTransform(uiTransform.GetAddressOf()), "create transformation matrix");
-    qWarning("transformation matrix %p", uiTransform.Get());
-    //HR(uiTransform->SetMatrixElement(0, 0, 2.f), "set matrix value");
-    //iTransform->SetMatrix(matrix);
+    //qWarning("transformation matrix %p", uiTransform.Get());
+    ////HR(uiTransform->SetMatrixElement(0, 0, 2.f), "set matrix value");
+    //uiTransform->SetMatrix(matrix);
     //HR(uiVisual->SetTransform(uiTransform.Get()), "set Matrix");
     HR(rootVisual->AddVisual(uiVisual.Get(), TRUE, NULL), "add ui visual to root");
     HR(m_DCompDevice->Commit(), "commit");
 
-    m_uiRenderControl = new RenderControl(window);
+    m_uiRenderControl = new RenderControl(m_uiOffscreenWindow);
 
     m_uiWindow = new QQuickWindow(m_uiRenderControl);
     m_uiWindow->setDefaultAlphaBuffer(true);
     m_uiWindow->setFormat(format);
-    //m_uiWindow->setGeometry(0, 0, width, height);
-    //m_uiWindow->setResizeMode(QQuickView::SizeRootObjectToView);
-    m_uiWindow->setClearBeforeRendering(true);
+    m_uiWindow->setClearBeforeRendering(false);
 
     m_qmlEngine = new QQmlEngine();
     if (!m_qmlEngine->incubationController())
@@ -253,16 +233,18 @@ void DirectCompositor::run()
     }
 
     // The root item is ready. Associate it with the window.
-    //QMLTransformNode* transformNode = new QMLTransformNode(m_uiWindow->contentItem());
-    //m_rootItem->setParentItem(transformNode);
-    m_rootItem->setParentItem(m_uiWindow->contentItem());
+    //apply global transformations to the QML to render the frame upside down
+    m_transformNode = new QMLTransformNode(m_uiWindow->contentItem());
+    m_transformNode->setSize(m_uiWindow->size());
+    m_transformNode->setTransformOrigin(QQuickItem::Center);
+    m_rootItem->setParentItem(m_transformNode);
+    //m_rootItem->setParentItem(m_uiWindow->contentItem());
 
     // Update item and rendering related geometries.
     updateSizes();
 
     // Initialize the render control and our OpenGL resources.
-    QSurface *surface = m_uiOffscreen;
-    m_context->makeCurrent(surface);
+    m_context->makeCurrent(m_uiOffscreenSurface);
     m_uiRenderControl->initialize(m_context);
     m_quickInitialized = true;
 }
@@ -280,6 +262,8 @@ void DirectCompositor::createFbo()
 {
     qWarning() << "DirectCompositor::createFbo";
     QSize size(m_rootWindow->width(), - m_rootWindow->height());
+    //GLuint fbo;
+    //m_context->functions()->glGenFramebuffers(1, &fbo);
     m_uiWindow->setRenderTarget(0, size);
 }
 
@@ -294,12 +278,10 @@ void DirectCompositor::updateSizes()
     // Behave like SizeRootObjectToView.
     m_rootItem->setWidth(m_rootWindow->width());
     m_rootItem->setHeight(m_rootWindow->height());
+    m_transformNode->setSize(m_rootWindow->size());
+
     m_uiWindow->setGeometry(0, 0, m_rootWindow->width(), m_rootWindow->height());
 }
-
-
-
-static bool g_isDrawing = false;
 
 void DirectCompositor::requestUpdate()
 {
@@ -309,50 +291,57 @@ void DirectCompositor::requestUpdate()
 
 void DirectCompositor::render()
 {
+    QSize realSize = m_rootWindow->size() * m_rootWindow->devicePixelRatio();
+    if (realSize != m_surfaceSize)
+    {
+        qWarning() << ">>>>>>>>>>>> RESIZE SURFACE <<<<<<<<<<<<";
+        uiSurface->Resize(realSize.width(), realSize.height());
+        m_surfaceSize = realSize;
+    }
     POINT update_offset;
-
-    int realWith = (EGLint)(m_rootWindow->width() * m_rootWindow->devicePixelRatio());
-    int realHeight = (EGLint)(m_rootWindow->height() * m_rootWindow->devicePixelRatio());
-    uiSurface->Resize(realWith, realHeight);
     HR(uiSurface->BeginDraw(NULL, IID_PPV_ARGS(uiDrawTexture.GetAddressOf()), &update_offset), "BeginDraw");
 
     EGLClientBuffer buffer = reinterpret_cast<EGLClientBuffer>(uiDrawTexture.Get());
-    EGLint pBufferAttributes[] =
-    {
-        EGL_WIDTH, realWith,
-        EGL_HEIGHT, realHeight,
-        EGL_FLEXIBLE_SURFACE_COMPATIBILITY_SUPPORTED_ANGLE, EGL_TRUE,
-        //EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
-        //EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
-        EGL_NONE
-    };
-    m_UIsurface = eglCreatePbufferFromClientBuffer(m_eglDisplay, EGL_D3D_TEXTURE_ANGLE, buffer, m_eglConfig, pBufferAttributes);
 
     D3D11_TEXTURE2D_DESC desc;
     uiDrawTexture->GetDesc(&desc);;
     qWarning("DirectCompositor::render update offset %lix%li, desc %u:%u, real %ix%i",
              update_offset.x, update_offset.y,
              desc.Width, desc.Height,
-             realWith, realHeight);
+             realSize.width(), realSize.height());
 
-    //m_uiRenderControl->setOffset(update_offset.x, update_offset.y);
-    m_context->makeCurrent(m_uiOffscreen);
+    EGLint pBufferAttributes[] =
+    {
+        EGL_WIDTH, static_cast<EGLint>(desc.Width),
+        EGL_HEIGHT, static_cast<EGLint>(desc.Height),
+        EGL_FLEXIBLE_SURFACE_COMPATIBILITY_SUPPORTED_ANGLE, EGL_TRUE,
+        //EGL_SURFACE_ORIENTATION_ANGLE, EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE, //doesn't work :(
+        //EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
+        //EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
+        EGL_NONE
+    };
+    m_UIsurface = eglCreatePbufferFromClientBuffer(m_eglDisplay, EGL_D3D_TEXTURE_ANGLE, buffer, m_eglConfig, pBufferAttributes);
+
+    m_context->makeCurrent(m_uiOffscreenSurface);
     eglCheck(eglMakeCurrent(m_eglDisplay, m_UIsurface, m_UIsurface, m_eglCtx), "egl make current");
-    m_context->functions()->glViewport(20, 50, realWith, realHeight);
-    m_context->functions()->glScissor(20, 50, realWith, realHeight);
+
+    m_context->functions()->glViewport(update_offset.x, update_offset.y, realSize.width(), realSize.height());
+    m_context->functions()->glScissor(update_offset.x, update_offset.y, realSize.width(), realSize.height());
+    m_context->functions()->glEnable(GL_SCISSOR_TEST);
+    m_context->functions()->glClearColor(1,1,0,0.5);
+    m_context->functions()->glClear(GL_COLOR_BUFFER_BIT);
 
     m_uiRenderControl->polishItems();
     m_uiRenderControl->sync();
     m_uiRenderControl->render();
 
-
     m_context->functions()->glFlush(); //present
     m_context->doneCurrent();
 
 
-    eglDestroySurface(m_eglDisplay, m_UIsurface);
     HR(uiSurface->EndDraw(), "end draw");
     HR(m_DCompDevice->Commit(), "commit");
+    eglDestroySurface(m_eglDisplay, m_UIsurface);
 }
 
 bool DirectCompositor::eventFilter(QObject* object, QEvent* event)
@@ -362,12 +351,29 @@ bool DirectCompositor::eventFilter(QObject* object, QEvent* event)
         qWarning() << ">>>>>>>>>>>> RESIZE <<<<<<<<<<<<";
         updateSizes();
         break;
+    //forward user input events to the offscreen window
     case QEvent::Enter:
     case QEvent::Leave:
+    case QEvent::FocusIn:
+    case QEvent::FocusOut:
+
+    case QEvent::KeyPress:
+    case QEvent::KeyRelease:
+
     case QEvent::HoverEnter:
     case QEvent::HoverLeave:
     case QEvent::HoverMove:
     case QEvent::MouseMove:
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonRelease:
+    case QEvent::MouseButtonDblClick:
+    case QEvent::Wheel:
+
+    case QEvent::DragEnter:
+    case QEvent::DragMove:
+    case QEvent::DragLeave:
+    case QEvent::DragResponse:
+    case QEvent::Drop:
         return QApplication::sendEvent(m_uiWindow, event);
     default:
         break;
